@@ -17,7 +17,8 @@ from dataclasses import dataclass
 
 from autogen_agentchat.agents import BaseChatAgent
 from autogen_agentchat.base import Response
-from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage, TextMessage, ModelClientStreamingChunkEvent
+from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage, UserMessage, TextMessage, ModelClientStreamingChunkEvent
+from autogen_core.model_context import UnboundedChatCompletionContext
 from autogen_core import CancellationToken
 
 @dataclass

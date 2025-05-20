@@ -15,15 +15,14 @@ import pyodbc, struct
 from azure import identity
 
 # For Autogen Agents
-from autogen_core.models import ChatCompletionClient, SystemMessage, UserMessage
 from autogen_ext.models.azure import AzureAIChatCompletionClient
 from azure.core.credentials import AzureKeyCredential
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
-from autogen_agentchat.conditions import TextMentionTermination
+from autogen_agentchat.conditions import TextMentionTermination, SourceMatchTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_agentchat.ui import Console
 from autogen_agentchat.base import TaskResult
 from autogen_agentchat.messages import ModelClientStreamingChunkEvent, TextMessage
+from autogen_core.models import UserMessage
 from autogen_core import CancellationToken
 
 from system_messages import QueryExtractorAgentMessage, ReportFinderAgentMessage, SQLGeneratorAgentMessage, ReviewerAgentMessage, EmailDraftAgentMessage
@@ -68,6 +67,7 @@ async def start_chat() -> None:
     model_client = AzureAIChatCompletionClient(
         model="gpt-4o-mini",
         endpoint="https://msfthackathong9909733395.services.ai.azure.com/models",
+        # endpoint="https://msfthackathong9909733395.openai.azure.com/",
         # Created an AI Foundry Hub, then a project within it, then a model. 
         # Can find and access the inference endpoint and Key within the Project -> My assets -> Models + endpoints
         credential=AzureKeyCredential(FOUNDRY_KEY),
@@ -134,19 +134,35 @@ async def start_chat() -> None:
         # input_func=user_input_func, # Uncomment this line to use user input as text.
         input_func=user_action_func,  # Uncomment this line to use user input as action.
     )
+    
+    # Create the email generator agent.
+    # EmailDraftGenerator = EmailDraftGeneratorAgent(
+    #     name="EmailDraftGenerator",
+    #     model_client=model_client,
+    #     system_message=EmailDraftAgentMessage,
+    #     model_client_stream=True
+    # )
+    EmailDraftGenerator = AssistantAgent(
+        name="EmailDraftGeneratorAgent",
+        model_client=model_client,
+        system_message=EmailDraftAgentMessage,
+        model_client_stream=True,  # Enable model client streaming.
+    )
 
     # Termination condition.
-    termination = TextMentionTermination("APPROVE", sources=["UserFinalReview"])
+    # termination = TextMentionTermination("APPROVE", sources=["UserFinalReview"])
+    termination = SourceMatchTermination(sources=["EmailDraftGeneratorAgent"])
 
     # Chain the assistant, critic and user agents using RoundRobinGroupChat.
     group_chat = RoundRobinGroupChat([
         QueryExtractorAgent,
-        ReportFinderAgent,
+        # ReportFinderAgent,
         # UserReportSelector,
         SQLGeneratorAgent,
         QueryExecutionAgentInstance,
         ReviewerAgent,
-        UserFinalReview
+        UserFinalReview,
+        EmailDraftGenerator
         ], termination_condition=termination)
 
     # Set the assistant agent in the user session.
@@ -158,16 +174,16 @@ async def start_chat() -> None:
 async def set_starts() -> List[cl.Starter]:
     return [
         cl.Starter(
-            label="Poem Writing",
-            message="Write a poem about the ocean.",
+            label="Claim Amounts by Category",
+            message="From: Microsoft (client_code=2) Can you show me claims amounts broken down by the broadest category?",
         ),
         cl.Starter(
-            label="Story Writing",
-            message="Write a story about a detective solving a mystery.",
+            label="Drug Claims: Brand vs Generic?",
+            message="From: IBM (client_code = 1) How many of the drug claims paid are Brand vs Generic?",
         ),
         cl.Starter(
-            label="Write Code",
-            message="Write a function that merge two list of numbers into single sorted list.",
+            label="Claimed Dental Codes",
+            message="From: IBM (client_code = 1) What types of dental codes (and their descriptions) were claimed on my plan? Please aggregate them.",
         ),
     ]
 
@@ -205,9 +221,9 @@ async def chat(message: cl.Message) -> None:
             streaming_response = None
         elif isinstance(msg, TaskResult):
             # Send the task termination message.
-            final_message = "Task terminated. "
-            if msg.stop_reason:
-                final_message += msg.stop_reason
+            final_message = "Thanks for chatting! You can send me a new question if you'd like."
+            # if msg.stop_reason:
+                # final_message += msg.stop_reason
             await cl.Message(content=final_message).send()
         else:
             # Skip all other message types.
